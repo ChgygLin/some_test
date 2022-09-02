@@ -5,6 +5,7 @@ using namespace std;
 
 
 void svd_decompose(void);
+void RVQ_test(void);
 
 int main(int argc, char **argv)
 {
@@ -53,6 +54,8 @@ int main(int argc, char **argv)
 
     svd_decompose();
 
+    RVQ_test();
+
     return 0;
 }
 
@@ -73,6 +76,7 @@ void svd_decompose(void)
     cout<<"R = V*U^t : " << endl << R << endl;
 }
 
+/*
 // Eigen与Point类的互相转换
 void Point3f_and_Vector3f(void)
 {
@@ -95,4 +99,68 @@ void Point3f_and_Vector3f(void)
 		cv::Point3d(pts3_eigen[i](0, 0), pts3_eigen[i](1, 0), pts3_eigen[i](2, 0)));
 	}
     
+}
+*/
+
+
+// 旋转矩阵R、旋转向量V、四元数Q
+void RVQ_test(void)
+{
+    // 旋转向量（轴角）：沿Z轴旋转45度
+    Eigen::AngleAxisd rotation_vector ( M_PI/4, Eigen::Vector3d(0, 0, 1));
+    cout << "rotation_vector axis = \n" << rotation_vector.axis() << "\n rotation_vector angle = " << rotation_vector.angle() /M_PI *180 << endl;
+
+    // 旋转矩阵：沿Z轴旋转45度
+    Eigen::Matrix3d rotation_matrix = Eigen::Matrix3d::Identity();
+    rotation_matrix << 0.707,   -0.707,     0,
+                        0.707,  0.707,      0,
+                        0,      0,          1;
+    cout << "rotation matrix = \n" << rotation_matrix << endl;
+
+    // 四元数：沿Z轴旋转45度
+    Eigen::Quaterniond quat = Eigen::Quaterniond(0, 0, 0.383, 0.924);
+    cout << "四元数输出方法1: quaternion = \n" << quat.coeffs() << endl;    // coeffs的顺序是(x,y,z,w)，w为实部，前三者为虚部
+    cout << "四元数输出方法2: \n x = " << quat.x() << "\n y = " << quat.y() << "\n z = " << quat.z() << "\n w = " << quat.w() << endl;
+
+    // 欧拉角： 沿Z轴旋转45度
+    Eigen::Vector3d euler_angles = Eigen::Vector3d(M_PI/4, 0, 0);   // ZYX顺序，即roll、pitch、yaw顺序
+    cout << "Euler: yaw pitch roll = " << euler_angles.transpose() << endl; // 按照xyz顺序输出，故需要转置
+
+    // -----------------------------------------------------------------------------------------------------------
+
+    // 相互转化关系
+
+
+    // 旋转向量转化为其他形式
+    cout << "旋转向量转化为旋转矩阵方法1: rotation matrix = \n" << rotation_vector.toRotationMatrix() << endl;
+    cout << "旋转向量转化为旋转矩阵方法2: rotation matrix = \n" << rotation_vector.matrix() << endl;
+
+    quat = rotation_vector;
+    cout << "旋转向量转化为四元数: quaternion = \n" << quat.coeffs() << endl; // (x,y,z,w)
+
+    // 旋转矩阵转化为其他形式
+
+    cout << "旋转矩阵转化为旋转向量: rotation_vector axis = \n" << rotation_vector.fromRotationMatrix(rotation_matrix).axis() << "\n rotation_vector angle = " << rotation_vector.fromRotationMatrix(rotation_matrix).angle() << endl;
+    // 注意: fromRotationMatrix 只适用于旋转向量，不适用于四元数
+
+    rotation_vector = rotation_matrix;
+    cout << "旋转矩阵直接给旋转向量赋值初始化: rotation_vector axis = \n" << rotation_vector.axis() << "\n rotation_vector angle = " << rotation_vector.angle() << endl;
+
+    euler_angles = rotation_matrix.eulerAngles(2, 1, 0);    // ZYX顺序
+    cout << "旋转矩阵转化为欧拉角: yaw pitch roll = \n" << euler_angles.transpose() << endl;    // 按照xyz顺序输出，故需要转置
+
+    quat = rotation_matrix;
+    cout << "旋转矩阵转化为四元数: " << quat.coeffs() << endl;
+
+
+    // 四元数转化为其他形式
+    rotation_vector = quat;
+    cout << "四元数转化为旋转向量: rotation_vector axis = " << rotation_vector.axis() << "\nrotation_vector angle = " << rotation_vector.angle() << endl;
+
+    rotation_matrix = quat.toRotationMatrix();
+    cout << "四元数转化为旋转矩阵方法1: rotation matrix = \n" << rotation_matrix << endl;
+
+    rotation_matrix = quat.matrix();
+    cout << "四元数转化为旋转矩阵方法2: rotation matrix = \n" << rotation_matrix << endl;
+
 }
