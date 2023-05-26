@@ -4,9 +4,13 @@
 #include <fstream>
 #include <string>
 
-#define CL_TARGET_OPENCL_VERSION 120
-#define __CL_ENABLE_EXCEPTIONS
-#include <CL/cl.hpp>
+// #define CL_TARGET_OPENCL_VERSION 120
+// #define __CL_ENABLE_EXCEPTIONS
+// #include <CL/cl.hpp>
+
+#define CL_HPP_ENABLE_EXCEPTIONS
+#define CL_HPP_TARGET_OPENCL_VERSION 210
+#include <CL/cl2.hpp>
 
 using namespace cv;
 using namespace std;
