@@ -13,3 +13,8 @@ target_link_libraries(matrix_multiply OpenCL::OpenCL)
 find_package(OpenCV REQUIRED)
 add_executable(rotate src/rotate.cpp)
 target_link_libraries(rotate OpenCL::OpenCL ${OpenCV_LIBS})
+
+add_executable(remap src/remap.cpp)
+target_link_libraries(remap OpenCL::OpenCL ${OpenCV_LIBS})
+
+
