@@ -206,8 +206,10 @@ void remap_test(const Mat& input_image, Mat &x_map, Mat &y_map)
         cl::Context context(device);
         cl::CommandQueue queue(context, device, CL_QUEUE_PROFILING_ENABLE);
 
+        std::ifstream file("remap.cl");
+        std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         // 创建程序对象
-        cl::Program program(context, kernel_source);
+        cl::Program program(context, cl::Program::Sources(1, source.c_str()));
 
         try
         {
