@@ -781,14 +781,6 @@ int main(int argc, char *argv[])
 
     GL_CHECK(ctx.glUseProgram(data.shader_program));
 
-    /* Enable attributes for position, color and texture coordinates etc. */
-    GL_CHECK(ctx.glEnableVertexAttribArray(data.vPosition));
-    GL_CHECK(ctx.glEnableVertexAttribArray(data.fPosition));
-
-    /* Populate attributes for position, color and texture coordinates etc. */
-    GL_CHECK(ctx.glVertexAttribPointer(data.vPosition, 2, GL_FLOAT, false, 8, _vertices));
-    GL_CHECK(ctx.glVertexAttribPointer(data.fPosition, 2, GL_FLOAT, false, 8, _fragments));
-
 
     GL_CHECK(ctx.glEnable(GL_CULL_FACE));   // 启用面剔除功能，即OpenGL将不会渲染被遮挡的面
     GL_CHECK(ctx.glEnable(GL_DEPTH_TEST));  // 启用深度测试功能，即OpenGL将根据深度值确定哪些像素应该被渲染
