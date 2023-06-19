@@ -11,3 +11,12 @@ target_link_libraries(gl3_cs_basic -lGLESv2 -lEGL)
 
 add_executable(gles2_triangle src/sdl_opengles2_triangle.cpp)
 target_link_libraries(gles2_triangle -lSDL2)
+
+
+SET(CMAKE_BUILD_TYPE "Debug")
+SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
+SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
+
+find_package(OpenCV REQUIRED)
+add_executable(gles2_image src/sdl_opengles2_image.cpp)
+target_link_libraries(gles2_image -lSDL2 ${OpenCV_LIBS})

@@ -18,6 +18,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengles2.h>
 
+#include <opencv2/opencv.hpp>
+
 
 #define DEFAULT_WINDOW_WIDTH 640
 #define DEFAULT_WINDOW_HEIGHT 480
@@ -96,10 +98,11 @@ typedef struct shader_data
 {
     GLuint shader_program, shader_frag, shader_vert;
 
-    GLint attr_position;
-    GLint attr_color, attr_mvp;
+    GLuint vPosition;    // 顶点的向量坐标
+    GLuint fPosition;    //纹理的向量坐标
+    GLuint sampler;      // sampler2D
 
-    int angle_x, angle_y, angle_z;
+    GLuint textureId;
 
     GLuint position_buffer;
     GLuint color_buffer;
@@ -171,99 +174,7 @@ static void quit(int rc)
         }                                                                                   \
     }
 
-/*
- * Simulates desktop's glRotatef. The matrix is returned in column-major order.
- */
-static void rotate_matrix(float angle, float x, float y, float z, float *r)
-{
-    float radians, c, s, c1, u[3], length;
-    int i, j;
 
-    radians = (float)(angle * M_PI) / 180.0f;
-
-    c = SDL_cosf(radians);
-    s = SDL_sinf(radians);
-
-    c1 = 1.0f - SDL_cosf(radians);
-
-    length = (float)SDL_sqrt(x * x + y * y + z * z);
-
-    u[0] = x / length;
-    u[1] = y / length;
-    u[2] = z / length;
-
-    for (i = 0; i < 16; i++)
-    {
-        r[i] = 0.0;
-    }
-
-    r[15] = 1.0;
-
-    for (i = 0; i < 3; i++)
-    {
-        r[i * 4 + (i + 1) % 3] = u[(i + 2) % 3] * s;
-        r[i * 4 + (i + 2) % 3] = -u[(i + 1) % 3] * s;
-    }
-
-    for (i = 0; i < 3; i++)
-    {
-        for (j = 0; j < 3; j++)
-        {
-            r[i * 4 + j] += c1 * u[i] * u[j] + (i == j ? c : 0.0f);
-        }
-    }
-}
-
-/*
- * Simulates gluPerspectiveMatrix
- */
-static void perspective_matrix(float fovy, float aspect, float znear, float zfar, float *r)
-{
-    int i;
-    float f;
-
-    f = 1.0f / SDL_tanf(fovy * 0.5f);
-
-    for (i = 0; i < 16; i++)
-    {
-        r[i] = 0.0;
-    }
-
-    r[0] = f / aspect;
-    r[5] = f;
-    r[10] = (znear + zfar) / (znear - zfar);
-    r[11] = -1.0f;
-    r[14] = (2.0f * znear * zfar) / (znear - zfar);
-    r[15] = 0.0f;
-}
-
-/*
- * Multiplies lhs by rhs and writes out to r. All matrices are 4x4 and column
- * major. In-place multiplication is supported.
- */
-static void multiply_matrix(float *lhs, float *rhs, float *r)
-{
-    int i, j, k;
-    float tmp[16];
-
-    for (i = 0; i < 4; i++)
-    {
-        for (j = 0; j < 4; j++)
-        {
-            tmp[j * 4 + i] = 0.0;
-
-            for (k = 0; k < 4; k++)
-            {
-                tmp[j * 4 + i] += lhs[k * 4 + i] * rhs[j * 4 + k];
-            }
-        }
-    }
-
-    for (i = 0; i < 16; i++)
-    {
-        r[i] = tmp[i];
-    }
-}
 
 /*
  * Create shader, load in source, compile, dump debug as necessary.
@@ -325,252 +236,45 @@ static void link_program(struct shader_data *data)
     }
 }
 
-/* 3D data. Vertex range -0.5..0.5 in all axes.
- * Z -0.5 is near, 0.5 is far. */
+//顶点坐标系(-1, -1) (1, -1)  (-1, 1)  (1, 1)
 const float _vertices[] =
-    {
-        /* Front face. */
-        /* Bottom left */
-        -0.5,
-        0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        -0.5,
-        -0.5,
-        -0.5,
-        /* Top right */
-        -0.5,
-        0.5,
-        -0.5,
-        0.5,
-        0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        /* Left face */
-        /* Bottom left */
-        -0.5,
-        0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        -0.5,
-        -0.5,
-        -0.5,
-        0.5,
-        /* Top right */
-        -0.5,
-        0.5,
-        0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        -0.5,
-        -0.5,
-        /* Top face */
-        /* Bottom left */
-        -0.5,
-        0.5,
-        0.5,
-        0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        /* Top right */
-        -0.5,
-        0.5,
-        0.5,
-        0.5,
-        0.5,
-        0.5,
-        0.5,
-        0.5,
-        -0.5,
-        /* Right face */
-        /* Bottom left */
-        0.5,
-        0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        /* Top right */
-        0.5,
-        0.5,
-        -0.5,
-        0.5,
-        0.5,
-        0.5,
-        0.5,
-        -0.5,
-        0.5,
-        /* Back face */
-        /* Bottom left */
-        0.5,
-        0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        0.5,
-        0.5,
-        -0.5,
-        0.5,
-        /* Top right */
-        0.5,
-        0.5,
-        0.5,
-        -0.5,
-        0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        0.5,
-        /* Bottom face */
-        /* Bottom left */
-        -0.5,
-        -0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        0.5,
-        /* Top right */
-        -0.5,
-        -0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        -0.5,
-        0.5,
-        -0.5,
-        0.5,
+{
+    -1.0f, -1.0f,
+    1.0f, -1.0f,
+    -1.0f, 1.0f,
+    1.0f, 1.0f
 };
 
-const float _colors[] =
-    {
-        /* Front face */
-        /* Bottom left */
-        1.0, 0.0, 0.0, /* red */
-        0.0, 0.0, 1.0, /* blue */
-        0.0, 1.0, 0.0, /* green */
-        /* Top right */
-        1.0, 0.0, 0.0, /* red */
-        1.0, 1.0, 0.0, /* yellow */
-        0.0, 0.0, 1.0, /* blue */
-        /* Left face */
-        /* Bottom left */
-        1.0, 1.0, 1.0, /* white */
-        0.0, 1.0, 0.0, /* green */
-        0.0, 1.0, 1.0, /* cyan */
-        /* Top right */
-        1.0, 1.0, 1.0, /* white */
-        1.0, 0.0, 0.0, /* red */
-        0.0, 1.0, 0.0, /* green */
-        /* Top face */
-        /* Bottom left */
-        1.0, 1.0, 1.0, /* white */
-        1.0, 1.0, 0.0, /* yellow */
-        1.0, 0.0, 0.0, /* red */
-        /* Top right */
-        1.0, 1.0, 1.0, /* white */
-        0.0, 0.0, 0.0, /* black */
-        1.0, 1.0, 0.0, /* yellow */
-        /* Right face */
-        /* Bottom left */
-        1.0, 1.0, 0.0, /* yellow */
-        1.0, 0.0, 1.0, /* magenta */
-        0.0, 0.0, 1.0, /* blue */
-        /* Top right */
-        1.0, 1.0, 0.0, /* yellow */
-        0.0, 0.0, 0.0, /* black */
-        1.0, 0.0, 1.0, /* magenta */
-        /* Back face */
-        /* Bottom left */
-        0.0, 0.0, 0.0, /* black */
-        0.0, 1.0, 1.0, /* cyan */
-        1.0, 0.0, 1.0, /* magenta */
-        /* Top right */
-        0.0, 0.0, 0.0, /* black */
-        1.0, 1.0, 1.0, /* white */
-        0.0, 1.0, 1.0, /* cyan */
-        /* Bottom face */
-        /* Bottom left */
-        0.0, 1.0, 0.0, /* green */
-        1.0, 0.0, 1.0, /* magenta */
-        0.0, 1.0, 1.0, /* cyan */
-        /* Top right */
-        0.0, 1.0, 0.0, /* green */
-        0.0, 0.0, 1.0, /* blue */
-        1.0, 0.0, 1.0, /* magenta */
+//纹理坐标系
+const float _fragments[] =
+{
+    0.0f, 1.0f,
+    1.0f, 1.0f,
+    0.0f, 0.0f,
+    1.0f, 0.0f
 };
-
-const char *_shader_vert_src =
-    " attribute vec4 av4position; "
-    " attribute vec3 av3color; "
-    " uniform mat4 mvp; "
-    " varying vec3 vv3color; "
-    " void main() { "
-    "    vv3color = av3color; "
-    "    gl_Position = mvp * av4position; "
-    " } ";
-
-const char *_shader_frag_src =
-    " precision lowp float; "
-    " varying vec3 vv3color; "
-    " void main() { "
-    "    gl_FragColor = vec4(vv3color, 1.0); "
-    " } ";
 
 static void Render(unsigned int width, unsigned int height, shader_data *data)
 {
-    float matrix_rotate[16], matrix_modelview[16], matrix_perspective[16], matrix_mvp[16];
 
-    /*
-     * Do some rotation with Euler angles. It is not a fixed axis as
-     * quaterions would be, but the effect is cool.
-     */
-    rotate_matrix((float)data->angle_x, 1.0f, 0.0f, 0.0f, matrix_modelview);
-    rotate_matrix((float)data->angle_y, 0.0f, 1.0f, 0.0f, matrix_rotate);
-
-    multiply_matrix(matrix_rotate, matrix_modelview, matrix_modelview);
-
-    rotate_matrix((float)data->angle_z, 0.0f, 1.0f, 0.0f, matrix_rotate);
-
-    multiply_matrix(matrix_rotate, matrix_modelview, matrix_modelview);
-
-    /* Pull the camera back from the cube */
-    matrix_modelview[14] -= 2.5;
-
-    perspective_matrix(45.0f, (float)width / height, 0.01f, 100.0f, matrix_perspective);
-    multiply_matrix(matrix_perspective, matrix_modelview, matrix_mvp);
-
-    GL_CHECK(ctx.glUniformMatrix4fv(data->attr_mvp, 1, GL_FALSE, matrix_mvp));
-
-    data->angle_x += 3;
-    data->angle_y += 2;
-    data->angle_z += 1;
-
-    if (data->angle_x >= 360)   data->angle_x -= 360;
-    if (data->angle_x < 0)      data->angle_x += 360;
-    if (data->angle_y >= 360)   data->angle_y -= 360;
-    if (data->angle_y < 0)      data->angle_y += 360;
-    if (data->angle_z >= 360)   data->angle_z -= 360;
-    if (data->angle_z < 0)      data->angle_z += 360;
 
     GL_CHECK(ctx.glViewport(0, 0, width, height));
     GL_CHECK(ctx.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
-    GL_CHECK(ctx.glDrawArrays(GL_TRIANGLES, 0, 36));
+    
+    ctx.glBindTexture(GL_TEXTURE_2D, data->textureId);
+    //10.使顶点属性数组有效,  使纹理属性数组有效
+    ctx.glEnableVertexAttribArray(data->vPosition);
+    ctx.glEnableVertexAttribArray(data->fPosition);
+    //11.为顶点属性赋值 todo；就是把 vertexBuffer的数据给到  vPosition
+    ctx.glVertexAttribPointer(data->vPosition, 2, GL_FLOAT, false, 8, _vertices);
+    //为片元属性赋值    todo:  把textureBuffer的数据给到 fPosition
+    ctx.glVertexAttribPointer(data->fPosition, 2, GL_FLOAT, false, 8, _fragments);
+    //todo； 到这里 vertex_shader.glsl中的  "av_Position"， "af_Position"就有数据了
+    //12.绘制图形
+    ctx.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    ctx.glBindTexture(GL_TEXTURE_2D, 0);//这里 textre=0 相当于解绑了
+
 }
 
 int done;
@@ -594,6 +298,7 @@ static void render_window()
     SDL_GL_GetDrawableSize(state->windows, &w, &h);
     Render(w, h, &data);
     SDL_GL_SwapWindow(state->windows);
+
 
     ++frames;
 }
@@ -1003,15 +708,15 @@ int main(int argc, char *argv[])
 
     status = SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &value);
     SDL_assert(!status);
-    SDL_Log("SDL_GL_RED_SIZE: requested %d, got %d\n", 5, value);
+    SDL_Log("SDL_GL_RED_SIZE: requested %d, got %d\n", 8, value);
 
     status = SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &value);
     SDL_assert(!status);
-    SDL_Log("SDL_GL_GREEN_SIZE: requested %d, got %d\n", 5, value);
+    SDL_Log("SDL_GL_GREEN_SIZE: requested %d, got %d\n", 8, value);
 
     status = SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &value);
     SDL_assert(!status);
-    SDL_Log("SDL_GL_BLUE_SIZE: requested %d, got %d\n", 5, value);
+    SDL_Log("SDL_GL_BLUE_SIZE: requested %d, got %d\n", 8, value);
 
     status = SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &value);
     SDL_assert(!status);
@@ -1028,14 +733,11 @@ int main(int argc, char *argv[])
     SDL_GL_GetDrawableSize(state->windows, &w, &h);
     ctx.glViewport(0, 0, w, h);     // 渲染的目标窗口区域，决定了渲染的内容在窗口中的位置和大小
 
-    data.angle_x = 0;
-    data.angle_y = 0;
-    data.angle_z = 0;
 
-    std::ifstream vertex_file("/home/chg/Codes/some_test/opengles_test/src/vert_triangle.glsl");
+    std::ifstream vertex_file("../src/vertex_image.glsl");
     std::string vertex_source((std::istreambuf_iterator<char>(vertex_file)), std::istreambuf_iterator<char>());
 
-    std::ifstream fragment_file("/home/chg/Codes/some_test/opengles_test/src/frag_triangle.glsl");
+    std::ifstream fragment_file("../src/fragment_image.glsl");
     std::string fragment_source((std::istreambuf_iterator<char>(fragment_file)), std::istreambuf_iterator<char>());
 
     /* Shader Initialization */
@@ -1049,34 +751,48 @@ int main(int argc, char *argv[])
     link_program(&data);
 
     /* Get attribute locations of non-fixed attributes like color and texture coordinates. */
-    data.attr_position = GL_CHECK(ctx.glGetAttribLocation(data.shader_program, "av4position"));
-    data.attr_color = GL_CHECK(ctx.glGetAttribLocation(data.shader_program, "av3color"));
+    data.vPosition = GL_CHECK(ctx.glGetAttribLocation(data.shader_program, "av_Position"));
+    data.fPosition = GL_CHECK(ctx.glGetAttribLocation(data.shader_program, "af_Position"));
+    data.sampler = GL_CHECK(ctx.glGetUniformLocation(data.shader_program, "sTexture"));
 
-    /* Get uniform locations */
-    data.attr_mvp = GL_CHECK(ctx.glGetUniformLocation(data.shader_program, "mvp"));
+
+    GL_CHECK(ctx.glGenTextures(1, &data.textureId));
+    //b.绑定纹理
+    GL_CHECK(ctx.glBindTexture(GL_TEXTURE_2D, data.textureId));
+
+    //c.激活纹理 (激活texture0)
+    GL_CHECK(ctx.glActiveTexture(GL_TEXTURE0));
+    // GL_CHECK(ctx.glUniform1i(data.sampler, 0));
+
+    //d.设置纹理 环绕和过滤方式
+    //todo: 环绕(超出纹理坐标范围)：(s==x  t==y GL_REPEAT重复)
+    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
+    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
+    //todo: 过滤(纹理像素映射到坐标点)：(缩小，放大：GL_LINEAR线性)
+    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+
+    cv::Mat image = cv::imread("../src/test.jpg");
+    cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
+    //e.把bitmap这张图片映射到Opengl上
+    GL_CHECK(ctx.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.cols, image.rows, 0, GL_RGB, GL_UNSIGNED_BYTE, image.data));
+    GL_CHECK(ctx.glBindTexture(GL_TEXTURE_2D, 0));//这里 textre=0 相当于解绑了
+
 
     GL_CHECK(ctx.glUseProgram(data.shader_program));
 
     /* Enable attributes for position, color and texture coordinates etc. */
-    GL_CHECK(ctx.glEnableVertexAttribArray(data.attr_position));
-    GL_CHECK(ctx.glEnableVertexAttribArray(data.attr_color));
+    GL_CHECK(ctx.glEnableVertexAttribArray(data.vPosition));
+    GL_CHECK(ctx.glEnableVertexAttribArray(data.fPosition));
 
     /* Populate attributes for position, color and texture coordinates etc. */
+    GL_CHECK(ctx.glVertexAttribPointer(data.vPosition, 2, GL_FLOAT, false, 8, _vertices));
+    GL_CHECK(ctx.glVertexAttribPointer(data.fPosition, 2, GL_FLOAT, false, 8, _fragments));
 
-    GL_CHECK(ctx.glGenBuffers(1, &data.position_buffer));   // 生成一个缓冲区对象
-    GL_CHECK(ctx.glBindBuffer(GL_ARRAY_BUFFER, data.position_buffer));  // 缓冲区对象绑定到上下文
-    GL_CHECK(ctx.glBufferData(GL_ARRAY_BUFFER, sizeof(_vertices), _vertices, GL_STATIC_DRAW));  // 将数据_vertices复制到缓冲区对象
-    GL_CHECK(ctx.glVertexAttribPointer(data.attr_position, 3, GL_FLOAT, GL_FALSE, 0, 0));   // 指定顶点属性attr_position的数据来源position_buffer
-    GL_CHECK(ctx.glBindBuffer(GL_ARRAY_BUFFER, 0)); // 解除绑定
-
-    GL_CHECK(ctx.glGenBuffers(1, &data.color_buffer));
-    GL_CHECK(ctx.glBindBuffer(GL_ARRAY_BUFFER, data.color_buffer));
-    GL_CHECK(ctx.glBufferData(GL_ARRAY_BUFFER, sizeof(_colors), _colors, GL_STATIC_DRAW));
-    GL_CHECK(ctx.glVertexAttribPointer(data.attr_color, 3, GL_FLOAT, GL_FALSE, 0, 0));
-    GL_CHECK(ctx.glBindBuffer(GL_ARRAY_BUFFER, 0));
 
     GL_CHECK(ctx.glEnable(GL_CULL_FACE));   // 启用面剔除功能，即OpenGL将不会渲染被遮挡的面
     GL_CHECK(ctx.glEnable(GL_DEPTH_TEST));  // 启用深度测试功能，即OpenGL将根据深度值确定哪些像素应该被渲染
+
 
     SDL_GL_MakeCurrent(state->windows, NULL);
 
