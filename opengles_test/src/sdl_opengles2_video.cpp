@@ -111,8 +111,7 @@ typedef struct shader_data
 
 static CommonState *state;
 static SDL_GLContext context;
-static int depth = 24;
-static GLES2_Context ctx;
+// static GLES2_Context ctx;
 static cv::VideoCapture cap;
 int done;
 Uint32 frames;
@@ -179,6 +178,23 @@ static void quit(int rc)
     }
 
 
+//顶点坐标系(-1, -1) (1, -1)  (-1, 1)  (1, 1)
+const float _vertices[] =
+{
+    -1.0f, -1.0f,
+    1.0f, -1.0f,
+    -1.0f, 1.0f,
+    1.0f, 1.0f
+};
+
+//纹理坐标系
+const float _fragments[] =
+{
+    0.0f, 1.0f,
+    1.0f, 1.0f,
+    0.0f, 0.0f,
+    1.0f, 0.0f
+};
 
 /*
  * Create shader, load in source, compile, dump debug as necessary.
@@ -187,7 +203,7 @@ static void quit(int rc)
  * source: Passed-in shader source code.
  * shader_type: Passed to GL, e.g. GL_VERTEX_SHADER.
  */
-static void process_shader(GLuint *shader, const char *source, GLint shader_type)
+static void process_shader(GLES2_Context ctx, GLuint *shader, const char *source, GLint shader_type)
 {
     GLint status = GL_FALSE;
     const char *shaders[1] = {NULL};
@@ -219,7 +235,7 @@ static void process_shader(GLuint *shader, const char *source, GLint shader_type
     }
 }
 
-static void link_program(struct shader_data *data)
+static void link_program(GLES2_Context ctx, struct shader_data *data)
 {
     GLint status = GL_FALSE;
     char buffer[1024];
@@ -240,28 +256,39 @@ static void link_program(struct shader_data *data)
     }
 }
 
-//顶点坐标系(-1, -1) (1, -1)  (-1, 1)  (1, 1)
-const float _vertices[] =
+static void init_texture(GLES2_Context ctx,struct shader_data *data)
 {
-    -1.0f, -1.0f,
-    1.0f, -1.0f,
-    -1.0f, 1.0f,
-    1.0f, 1.0f
-};
+    GL_CHECK(ctx.glGenTextures(1, &data->textureId));
+    //b.绑定纹理
+    GL_CHECK(ctx.glBindTexture(GL_TEXTURE_2D, data->textureId));
 
-//纹理坐标系
-const float _fragments[] =
+    //c.激活纹理 (激活texture0)
+    GL_CHECK(ctx.glActiveTexture(GL_TEXTURE0));
+    // GL_CHECK(ctx.glUniform1i(data.sampler, 0));
+
+    //d.设置纹理 环绕和过滤方式
+    //todo: 环绕(超出纹理坐标范围)：(s==x  t==y GL_REPEAT重复)
+    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
+    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
+    //todo: 过滤(纹理像素映射到坐标点)：(缩小，放大：GL_LINEAR线性)
+    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+
+    //10.使顶点属性数组有效,  使纹理属性数组有效
+    ctx.glEnableVertexAttribArray(data->vPosition);
+    ctx.glEnableVertexAttribArray(data->fPosition);
+    //11.为顶点属性赋值 todo；就是把 vertexBuffer的数据给到  vPosition
+    ctx.glVertexAttribPointer(data->vPosition, 2, GL_FLOAT, false, 8, _vertices);
+    //为片元属性赋值    todo:  把textureBuffer的数据给到 fPosition
+    ctx.glVertexAttribPointer(data->fPosition, 2, GL_FLOAT, false, 8, _fragments);
+    //todo； 到这里 vertex_shader.glsl中的  "av_Position"， "af_Position"就有数据了
+
+    GL_CHECK(ctx.glBindTexture(GL_TEXTURE_2D, 0));//这里 textre=0 相当于解绑了
+}
+
+
+static void Render(unsigned int width, unsigned int height, shader_data *data, GLES2_Context ctx)
 {
-    0.0f, 1.0f,
-    1.0f, 1.0f,
-    0.0f, 0.0f,
-    1.0f, 0.0f
-};
-
-static void Render(unsigned int width, unsigned int height, shader_data *data)
-{
-
-
     GL_CHECK(ctx.glViewport(0, 0, width, height));
     GL_CHECK(ctx.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 
@@ -281,14 +308,6 @@ static void Render(unsigned int width, unsigned int height, shader_data *data)
     //e.把bitmap这张图片映射到Opengl上
     GL_CHECK(ctx.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, frame.cols, frame.rows, 0, GL_RGB, GL_UNSIGNED_BYTE, frame.data));
 
-    //10.使顶点属性数组有效,  使纹理属性数组有效
-    ctx.glEnableVertexAttribArray(data->vPosition);
-    ctx.glEnableVertexAttribArray(data->fPosition);
-    //11.为顶点属性赋值 todo；就是把 vertexBuffer的数据给到  vPosition
-    ctx.glVertexAttribPointer(data->vPosition, 2, GL_FLOAT, false, 8, _vertices);
-    //为片元属性赋值    todo:  把textureBuffer的数据给到 fPosition
-    ctx.glVertexAttribPointer(data->fPosition, 2, GL_FLOAT, false, 8, _fragments);
-    //todo； 到这里 vertex_shader.glsl中的  "av_Position"， "af_Position"就有数据了
     //12.绘制图形
     ctx.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
@@ -296,7 +315,7 @@ static void Render(unsigned int width, unsigned int height, shader_data *data)
 
 }
 
-static void render_window()
+static void render_window(GLES2_Context ctx)
 {
     int w, h, status;
 
@@ -311,14 +330,14 @@ static void render_window()
     }
 
     SDL_GL_GetDrawableSize(state->windows, &w, &h);
-    Render(w, h, &data);
+    Render(w, h, &data, ctx);
     SDL_GL_SwapWindow(state->windows);
 
 
     ++frames;
 }
 
-static void loop()
+static void loop(GLES2_Context ctx)
 {
     SDL_Event event;
 
@@ -334,7 +353,7 @@ static void loop()
     }
 
     if (!done)
-        render_window();
+        render_window(ctx);
 }
 
 CommonState* CommonCreateState()
@@ -351,7 +370,7 @@ CommonState* CommonCreateState()
     /* Initialize some defaults */
     state->flags = SDL_INIT_VIDEO;
     state->window_title = "OpenGL ES2 Test";
-    state->window_flags = 0;
+    state->window_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
     state->window_x = SDL_WINDOWPOS_UNDEFINED;
     state->window_y = SDL_WINDOWPOS_UNDEFINED;
     state->window_w = DEFAULT_WINDOW_WIDTH;
@@ -373,6 +392,14 @@ CommonState* CommonCreateState()
     state->gl_retained_backing = 1;
     state->gl_accelerated = -1;
     state->gl_debug = 0;
+
+    // opengles 2.0
+    state->gl_major_version = 2;
+    state->gl_minor_version = 0;
+    state->gl_profile_mask = SDL_GL_CONTEXT_PROFILE_ES;
+    state->verbose = VERBOSE_VIDEO | VERBOSE_MODES | VERBOSE_RENDER;
+    // state->window_icon = "/home/orangepi/Codes/SDL2-2.26.5/test/icon.bmp";
+    state->renderdriver = "opengles2";
 
     return state;
 }
@@ -663,30 +690,48 @@ SDL_bool CommonInit(CommonState *state)
     return SDL_TRUE;
 }
 
+static void show_sdl_gl_info(GLES2_Context ctx)
+{
+    int value, status;
+    SDL_DisplayMode mode;
+
+    SDL_GetCurrentDisplayMode(0, &mode);
+    SDL_Log("Screen bpp: %d\n", SDL_BITSPERPIXEL(mode.format));
+    SDL_Log("\n");
+    SDL_Log("Vendor     : %s\n", ctx.glGetString(GL_VENDOR));
+    SDL_Log("Renderer   : %s\n", ctx.glGetString(GL_RENDERER));
+    SDL_Log("Version    : %s\n", ctx.glGetString(GL_VERSION));
+    SDL_Log("Extensions : %s\n", ctx.glGetString(GL_EXTENSIONS));
+    SDL_Log("\n");
+
+    status = SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &value);
+    SDL_assert(!status);
+    SDL_Log("SDL_GL_RED_SIZE: requested %d, got %d\n", 8, value);
+
+    status = SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &value);
+    SDL_assert(!status);
+    SDL_Log("SDL_GL_GREEN_SIZE: requested %d, got %d\n", 8, value);
+
+    status = SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &value);
+    SDL_assert(!status);
+    SDL_Log("SDL_GL_BLUE_SIZE: requested %d, got %d\n", 8, value);
+
+    status = SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &value);
+    SDL_assert(!status);
+    SDL_Log("SDL_GL_DEPTH_SIZE: requested %d, got %d\n", 24, value);
+}
+
 int main(int argc, char *argv[])
 {
-    int value;
-    SDL_DisplayMode mode;
+    
+    
     Uint32 then, now;
-    int status;
+    GLES2_Context ctx;
 
     /* Initialize test framework */
     state = CommonCreateState();
     if (!state)
         return 1;
-
-    /* Set OpenGL parameters */
-    state->window_flags |= SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
-    state->gl_red_size = 8;
-    state->gl_green_size = 8;
-    state->gl_blue_size = 8;
-    state->gl_depth_size = depth;
-    state->gl_major_version = 2;
-    state->gl_minor_version = 0;
-    state->gl_profile_mask = SDL_GL_CONTEXT_PROFILE_ES;
-    state->verbose |= VERBOSE_VIDEO | VERBOSE_MODES | VERBOSE_RENDER;
-    // state->window_icon = "/home/orangepi/Codes/SDL2-2.26.5/test/icon.bmp";
-    state->renderdriver = "opengles2";
 
     if (!CommonInit(state))
     {
@@ -714,41 +759,7 @@ int main(int argc, char *argv[])
 
     SDL_GL_SetSwapInterval(0);  // 禁用垂直同步
 
-    SDL_GetCurrentDisplayMode(0, &mode);
-    SDL_Log("Screen bpp: %d\n", SDL_BITSPERPIXEL(mode.format));
-    SDL_Log("\n");
-    SDL_Log("Vendor     : %s\n", ctx.glGetString(GL_VENDOR));
-    SDL_Log("Renderer   : %s\n", ctx.glGetString(GL_RENDERER));
-    SDL_Log("Version    : %s\n", ctx.glGetString(GL_VERSION));
-    SDL_Log("Extensions : %s\n", ctx.glGetString(GL_EXTENSIONS));
-    SDL_Log("\n");
-
-    status = SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &value);
-    SDL_assert(!status);
-    SDL_Log("SDL_GL_RED_SIZE: requested %d, got %d\n", 8, value);
-
-    status = SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &value);
-    SDL_assert(!status);
-    SDL_Log("SDL_GL_GREEN_SIZE: requested %d, got %d\n", 8, value);
-
-    status = SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &value);
-    SDL_assert(!status);
-    SDL_Log("SDL_GL_BLUE_SIZE: requested %d, got %d\n", 8, value);
-
-    status = SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &value);
-    SDL_assert(!status);
-    SDL_Log("SDL_GL_DEPTH_SIZE: requested %d, got %d\n", depth, value);
-
-    int w, h;
-    status = SDL_GL_MakeCurrent(state->windows, context);
-    if (status)
-    {
-        SDL_Log("SDL_GL_MakeCurrent(): %s\n", SDL_GetError());
-        exit(-1);
-    }
-
-    SDL_GL_GetDrawableSize(state->windows, &w, &h);
-    ctx.glViewport(0, 0, w, h);     // 渲染的目标窗口区域，决定了渲染的内容在窗口中的位置和大小
+    show_sdl_gl_info(ctx);
 
 
     std::ifstream vertex_file("../src/vertex_image.glsl");
@@ -758,14 +769,14 @@ int main(int argc, char *argv[])
     std::string fragment_source((std::istreambuf_iterator<char>(fragment_file)), std::istreambuf_iterator<char>());
 
     /* Shader Initialization */
-    process_shader(&data.shader_vert, vertex_source.c_str(), GL_VERTEX_SHADER);
-    process_shader(&data.shader_frag, fragment_source.c_str(), GL_FRAGMENT_SHADER);
+    process_shader(ctx, &data.shader_vert, vertex_source.c_str(), GL_VERTEX_SHADER);
+    process_shader(ctx, &data.shader_frag, fragment_source.c_str(), GL_FRAGMENT_SHADER);
 
     /* Create shader_program (ready to attach shaders) */
     data.shader_program = GL_CHECK(ctx.glCreateProgram());
 
     /* Attach shaders and link shader_program */
-    link_program(&data);
+    link_program(ctx, &data);
 
     /* Get attribute locations of non-fixed attributes like color and texture coordinates. */
     data.vPosition = GL_CHECK(ctx.glGetAttribLocation(data.shader_program, "av_Position"));
@@ -773,24 +784,7 @@ int main(int argc, char *argv[])
     data.sampler = GL_CHECK(ctx.glGetUniformLocation(data.shader_program, "sTexture"));
 
 
-    GL_CHECK(ctx.glGenTextures(1, &data.textureId));
-    //b.绑定纹理
-    GL_CHECK(ctx.glBindTexture(GL_TEXTURE_2D, data.textureId));
-
-    //c.激活纹理 (激活texture0)
-    GL_CHECK(ctx.glActiveTexture(GL_TEXTURE0));
-    // GL_CHECK(ctx.glUniform1i(data.sampler, 0));
-
-    //d.设置纹理 环绕和过滤方式
-    //todo: 环绕(超出纹理坐标范围)：(s==x  t==y GL_REPEAT重复)
-    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
-    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
-    //todo: 过滤(纹理像素映射到坐标点)：(缩小，放大：GL_LINEAR线性)
-    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-    GL_CHECK(ctx.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
-
-    GL_CHECK(ctx.glBindTexture(GL_TEXTURE_2D, 0));//这里 textre=0 相当于解绑了
-
+    init_texture(ctx, &data);
 
     GL_CHECK(ctx.glUseProgram(data.shader_program));
 
@@ -799,15 +793,13 @@ int main(int argc, char *argv[])
     GL_CHECK(ctx.glEnable(GL_DEPTH_TEST));  // 启用深度测试功能，即OpenGL将根据深度值确定哪些像素应该被渲染
 
 
-    SDL_GL_MakeCurrent(state->windows, NULL);
-
     /* Main render loop */
     frames = 0;
     then = SDL_GetTicks();
     done = 0;
 
     while (!done)
-        loop();
+        loop(ctx);
 
     /* Print out some timing information */
     now = SDL_GetTicks();
