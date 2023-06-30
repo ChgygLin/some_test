@@ -648,6 +648,9 @@ SDL_bool CommonInit(CommonState *state)
     return SDL_TRUE;
 }
 
+
+
+
 int main(int argc, char *argv[])
 {
     int value;
@@ -666,12 +669,14 @@ int main(int argc, char *argv[])
     state->gl_green_size = 8;
     state->gl_blue_size = 8;
     state->gl_depth_size = depth;
-    state->gl_major_version = 2;
-    state->gl_minor_version = 0;
+    state->gl_major_version = 3;
+    state->gl_minor_version = 2;
     state->gl_profile_mask = SDL_GL_CONTEXT_PROFILE_ES;
     state->verbose |= VERBOSE_VIDEO | VERBOSE_MODES | VERBOSE_RENDER;
     // state->window_icon = "/home/orangepi/Codes/SDL2-2.26.5/test/icon.bmp";
+    state->videodriver = "x11";     // "wayland";
     state->renderdriver = "opengles2";
+    
 
     if (!CommonInit(state))
     {
@@ -740,12 +745,14 @@ int main(int argc, char *argv[])
     std::ifstream fragment_file("../src/fragment_image.glsl");
     std::string fragment_source((std::istreambuf_iterator<char>(fragment_file)), std::istreambuf_iterator<char>());
 
+
+    /* Create shader_program (ready to attach shaders) */
+    data.shader_program = GL_CHECK(ctx.glCreateProgram());
+
     /* Shader Initialization */
     process_shader(&data.shader_vert, vertex_source.c_str(), GL_VERTEX_SHADER);
     process_shader(&data.shader_frag, fragment_source.c_str(), GL_FRAGMENT_SHADER);
 
-    /* Create shader_program (ready to attach shaders) */
-    data.shader_program = GL_CHECK(ctx.glCreateProgram());
 
     /* Attach shaders and link shader_program */
     link_program(&data);
