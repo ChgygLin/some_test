@@ -24,3 +24,7 @@ target_link_libraries(gles2_image -lSDL2 ${OpenCV_LIBS})
 
 add_executable(gles2_video src/sdl_opengles2_video.cpp)
 target_link_libraries(gles2_video -lSDL2 ${OpenCV_LIBS})
+
+include_directories(/home/chg/Downloads/glm-0.9.9.8/glm)
+add_executable(gles3_particle src/sdl_opengles3_particle.cpp)
+target_link_libraries(gles3_particle -lSDL2)
