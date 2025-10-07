@@ -5,6 +5,8 @@ project(my_module)
 set(CMAKE_CXX_STANDARD 17)
 
 find_package(OpenCV REQUIRED)
+
+set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
 
 add_library(my_module MODULE src/my_module.cpp)
